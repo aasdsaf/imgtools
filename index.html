@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="圖片合併">
+<meta name="theme-color" content="#1b1b1d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>圖片合併工具</title>
+<style>
+:root{--bg:#f3f3f6;--card:#fff;--tx:#1c1c1f;--mut:#6b6b73;--bd:#d9d9df;--ac:#2f7bf5;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b1b1d;--card:#272729;--tx:#eee;--mut:#9a9aa2;--bd:#3a3a3e;--ac:#4a90ff}}
+:root[data-theme="dark"]{--bg:#1b1b1d;--card:#272729;--tx:#eee;--mut:#9a9aa2;--bd:#3a3a3e;--ac:#4a90ff}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,"Noto Sans TC","PingFang TC",sans-serif}
+main{max-width:640px;margin:0 auto;padding:14px}
+h1{font-size:20px;margin:4px 0 12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:12px}
+.card h2{font-size:13px;color:var(--mut);margin:0 0 8px;font-weight:600}
+button,.btn{font:inherit;min-height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+.pri{background:var(--ac);border-color:var(--ac);color:#fff;font-weight:600}
+button:disabled{opacity:.5}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{flex:0 0 auto}.grow{flex:1 1 auto!important}
+label.opt{display:inline-flex;align-items:center;gap:6px;min-height:36px;margin-right:12px}
+.it{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--bd)}
+.it:first-child{border-top:0}
+.it img{width:48px;height:48px;object-fit:cover;border-radius:6px;background:var(--bd)}
+.it .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.it small{color:var(--mut)}
+.it button{min-height:36px;padding:0 10px}
+#out img{max-width:100%;border-radius:6px;border:1px solid var(--bd);background:#fff}
+#msg{color:var(--mut);font-size:13px;margin:6px 0}
+.sc{overflow-x:auto}
+</style>
+</head>
+<body>
+<main>
+<h1>🧩 圖片合併工具</h1>
+
+<div class="card">
+  <h2>1. 選取圖片</h2>
+  <div class="row">
+    <label class="btn pri grow">＋ 選擇圖片<input id="pick" type="file" accept="image/*" multiple hidden></label>
+    <button id="clr">清空</button>
+  </div>
+  <div id="cnt" style="color:var(--mut);margin:8px 0 0">已選擇 0 張圖片</div>
+  <div id="list" class="sc"></div>
+</div>
+
+<div class="card">
+  <h2>2. 排版與輸出</h2>
+  <div>
+    <label class="opt"><input type="radio" name="m" value="smart" checked>🧠 智慧排版</label>
+    <label class="opt"><input type="radio" name="m" value="h">↔ 橫向拼接</label>
+    <label class="opt"><input type="radio" name="m" value="v">↕ 直向拼接</label>
+  </div>
+  <div>
+    <label class="opt"><input type="radio" name="f" value="jpg" checked>JPG</label>
+    <label class="opt"><input type="radio" name="f" value="png">PNG</label>
+  </div>
+  <label class="opt"><input type="checkbox" id="hq">🔥 原始畫質模式（保留更多細節）</label>
+</div>
+
+<button id="go" class="pri" style="width:100%" disabled>🚀 開始合併</button>
+<div id="msg"></div>
+
+<div id="out" class="card" hidden>
+  <h2>結果</h2>
+  <img id="res" alt="合併結果">
+  <div id="info" style="color:var(--mut);margin:8px 0"></div>
+  <div class="row">
+    <a id="dl" class="btn pri grow">⬇ 下載</a>
+    <button id="sh" hidden>↗ 分享／存到相簿</button>
+  </div>
+</div>
+</main>
+
+<script>
+const $=s=>document.querySelector(s);
+let items=[],outURL=null,outFile=null;
+const IOS=/iP(hone|ad)/.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Mac/.test(navigator.platform));
+const MAXPX=IOS?16e6:6e7; // iOS Safari 的 Canvas 約 1600 萬像素上限
+
+function say(t){$('#msg').textContent=t||''}
+
+async function addFiles(fs){
+  for(const f of fs){
+    try{
+      const bmp=await createImageBitmap(f,{imageOrientation:'from-image'});
+      items.push({f,bmp,url:URL.createObjectURL(f)});
+    }catch(_){say('無法讀取：'+f.name)}
+  }
+  draw();
+}
+$('#pick').onchange=async e=>{const fs=[...e.target.files];e.target.value='';await addFiles(fs)};
+$('#clr').onclick=()=>{items.forEach(o=>URL.revokeObjectURL(o.url));items=[];draw()};
+$('#list').onclick=e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const i=+b.dataset.i,a=b.dataset.a;
+  if(a==='x'){URL.revokeObjectURL(items[i].url);items.splice(i,1)}
+  else{const j=a==='u'?i-1:i+1;if(j<0||j>=items.length)return;[items[i],items[j]]=[items[j],items[i]]}
+  draw();
+};
+function draw(){
+  $('#cnt').textContent='已選擇 '+items.length+' 張圖片';
+  $('#go').disabled=!items.length;
+  $('#list').innerHTML=items.map((o,i)=>`<div class="it"><img src="${o.url}" alt=""><div class="n">${i+1}. ${o.f.name.replace(/[<>&]/g,'')}<br><small>${o.bmp.width}×${o.bmp.height}</small></div><button data-a="u" data-i="${i}">↑</button><button data-a="d" data-i="${i}">↓</button><button data-a="x" data-i="${i}">✕</button></div>`).join('');
+}
+
+/* 智慧排版：移植自 layout_smart，細長圖放側欄，其餘以接近 1:1 的整體比例分列 */
+function smart(imgs,hq){
+  let side=[],main=[];
+  imgs.forEach(i=>(i.h/i.w>2.5?side:main).push(i));
+  if(!main.length){main=side;side=[]}
+  const n=main.length;
+  const T=hq?Math.max(4000,Math.round(main.reduce((a,i)=>a+i.w,0)/n*3)):3000;
+  let rows=[];
+  if(n===1)rows=[main];
+  else if(n>12){const c=Math.ceil(Math.sqrt(n));for(let i=0;i<n;i+=c)rows.push(main.slice(i,i+c))}
+  else{
+    const parts=k=>{if(!k)return[[]];const r=[];for(let i=1;i<=Math.min(4,k);i++)for(const p of parts(k-i))r.push([i,...p]);return r};
+    let best=null,bs=Infinity;
+    for(const p of parts(n)){
+      let idx=0,th=0;
+      const L=p.map(c=>{const r=main.slice(idx,idx+c);idx+=c;return r});
+      L.forEach(r=>th+=1/r.reduce((a,i)=>a+i.w/i.h,0));
+      const s=Math.abs(Math.log(1/th));
+      if(s<bs){bs=s;best=L}
+    }
+    rows=best;
+  }
+  const ops=[];let y=0;
+  for(const r of rows){
+    const rh=Math.floor(T/r.reduce((a,i)=>a+i.w/i.h,0));let x=0;
+    r.forEach((i,k)=>{const w=k===r.length-1?T-x:Math.floor(rh*i.w/i.h);ops.push([i,x,y,w,rh]);x+=w});
+    y+=rh;
+  }
+  let W=T;
+  if(side.length){
+    const mw=Math.max(...side.map(i=>i.w)),th=side.reduce((a,i)=>a+i.h,0);
+    let fw=Math.floor(mw*y/th);
+    if(fw>T*.5)fw=Math.floor(T*.5);
+    const k=fw/mw;let sy=0;
+    side.forEach(i=>{ops.push([i,T+(mw-i.w)/2*k,sy*k,i.w*k,i.h*k]);sy+=i.h});
+    W=T+fw;
+  }
+  return{W,H:y,ops};
+}
+/* 橫向／直向拼接：以第一張為基準等比縮放 */
+function line(imgs,horiz){
+  const b=horiz?imgs[0].h:imgs[0].w;let p=0;const ops=[];
+  imgs.forEach(i=>{
+    const r=b/(horiz?i.h:i.w);
+    const w=horiz?Math.floor(i.w*r):b,h=horiz?b:Math.floor(i.h*r);
+    ops.push([i,horiz?p:0,horiz?0:p,w,h]);p+=horiz?w:h;
+  });
+  return horiz?{W:p,H:b,ops}:{W:b,H:p,ops};
+}
+
+$('#go').onclick=async()=>{
+  const mode=$('input[name=m]:checked').value,fmt=$('input[name=f]:checked').value,hq=$('#hq').checked;
+  $('#go').disabled=true;say('⏳ 處理中…');
+  await new Promise(r=>setTimeout(r,30));
+  try{
+    const imgs=items.map(o=>({b:o.bmp,w:o.bmp.width,h:o.bmp.height}));
+    const p=mode==='smart'?smart(imgs,hq):line(imgs,mode==='h');
+    const s=Math.min(1,Math.sqrt(MAXPX/(p.W*p.H)));
+    const c=document.createElement('canvas');
+    c.width=Math.round(p.W*s);c.height=Math.round(p.H*s);
+    const g=c.getContext('2d');
+    g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);
+    g.imageSmoothingQuality='high';
+    for(const[i,x,y,w,h]of p.ops){
+      const x0=Math.round(x*s),y0=Math.round(y*s);
+      g.drawImage(i.b,x0,y0,Math.round((x+w)*s)-x0,Math.round((y+h)*s)-y0);
+    }
+    const type=fmt==='png'?'image/png':'image/jpeg';
+    const blob=await new Promise(r=>c.toBlob(r,type,hq?.99:.95));
+    if(!blob)throw new Error('輸出失敗，圖片可能過大');
+    if(outURL)URL.revokeObjectURL(outURL);
+    outURL=URL.createObjectURL(blob);
+    const name='merged_'+new Date().toISOString().replace(/\D/g,'').slice(0,14)+'.'+(fmt==='png'?'png':'jpg');
+    outFile=new File([blob],name,{type});
+    $('#res').src=outURL;
+    $('#dl').href=outURL;$('#dl').download=name;
+    $('#info').textContent=c.width+'×'+c.height+' px · '+(blob.size/1048576).toFixed(2)+' MB'+(s<1?'（超出裝置畫布上限，已自動等比縮小）':'');
+    $('#sh').hidden=!(navigator.canShare&&navigator.canShare({files:[outFile]}));
+    $('#out').hidden=false;
+    say('✅ 完成');
+    $('#out').scrollIntoView({behavior:'smooth'});
+  }catch(err){say('❌ '+err.message)}
+  $('#go').disabled=!items.length;
+};
+$('#sh').onclick=()=>navigator.share({files:[outFile]}).catch(()=>{});
+
+/* PWA：註冊離線快取，並接收從相簿「分享」過來的圖片（Android） */
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+if(/[?&]shared=/.test(location.search)){
+  history.replaceState(null,'',location.pathname);
+  caches.open('shared').then(async c=>{
+    const ks=(await c.keys()).sort((a,b)=>a.url<b.url?-1:1),fs=[];
+    for(const k of ks){const r=await c.match(k),b=await r.blob();fs.push(new File([b],decodeURIComponent(r.headers.get('X-Name')||'image'),{type:b.type}));await c.delete(k)}
+    addFiles(fs);
+  });
+}
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 {
- "name": "圖片合併工具",
- "short_name": "圖片合併",
+ "name": "圖片工具箱",
+ "short_name": "圖片工具",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
@@ -27,7 +27,8 @@
     {
      "name": "images",
      "accept": [
-      "image/*"
+      "image/*",
+      "application/pdf"
      ]
     }
    ]
